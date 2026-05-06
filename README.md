@@ -33,7 +33,7 @@ The file picker and drag-and-drop loader accept:
 
 ## Requirements
 
-- Python 3.10 or newer
+- Python 3.11
 - FFmpeg installed and available in PATH
 - Internet connection for Google Translate and gTTS
 - Enough disk space for temporary extracted audio files
