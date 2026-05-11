@@ -2,7 +2,7 @@
 
 Translytic is a Python desktop application that turns a video into translated captions and plays the video back with synced subtitles. It can also generate a dubbed audio track from the translated text and export the translated captions as an `.srt` file.
 
-The app is built with Tkinter, OpenCV, pygame, Whisper, MoviePy, deep-translator, gTTS, and pydub.
+The app is built with Tkinter, OpenCV, pygame, Whisper, MoviePy, deep-translator, edge-tts, and pydub.
 
 ## Features
 
@@ -16,7 +16,7 @@ The app is built with Tkinter, OpenCV, pygame, Whisper, MoviePy, deep-translator
 - Optional OpenAI-powered natural translation if an API key is added in `app.py`
 - Synced live captions during playback
 - Original audio / dubbed audio toggle
-- Dubbed audio generation using gTTS
+- Dubbed audio generation using edge-tts
 - Subtitle export in `.srt` format
 - Keyboard shortcuts for play/pause and seeking
 - Automatic cleanup of temporary audio files
@@ -33,9 +33,9 @@ The file picker and drag-and-drop loader accept:
 
 ## Requirements
 
-- Python 3.10 or newer
+- Python 3.10
 - FFmpeg installed and available in PATH
-- Internet connection for Google Translate and gTTS
+- Internet connection for Google Translate and edge-tts
 - Enough disk space for temporary extracted audio files
 
 Whisper can run on CPU, but transcription may be slow for long videos.
@@ -59,7 +59,7 @@ venv\Scripts\activate
 Install dependencies:
 
 ```powershell
-pip install pygame opencv-python Pillow openai-whisper deep-translator moviepy tkinterdnd2 openai gTTS pydub
+pip install pygame opencv-python Pillow openai-whisper deep-translator moviepy tkinterdnd2 openai edge-tts pydub
 ```
 
 Install FFmpeg and make sure `ffmpeg` works from the terminal:
@@ -100,7 +100,7 @@ Basic workflow:
 1. MoviePy extracts the source audio into a temporary WAV file.
 2. Whisper transcribes the audio into timestamped text segments.
 3. Each segment is translated into the selected language.
-4. gTTS creates translated speech clips for each segment.
+4. edge-tts creates translated speech clips for each segment.
 5. pydub overlays the generated speech clips onto a silent audio track.
 6. OpenCV decodes video frames in a background thread.
 7. pygame plays either the original extracted audio or the generated dubbed audio.
@@ -123,4 +123,3 @@ If OpenAI translation fails, the app falls back to Google Translate automaticall
 - Videos without audio cannot be processed.
 - Temporary files are created in the system temp folder and cleaned up when the app closes.
 - Do not commit `venv/`, generated audio, cache files, or large videos to GitHub.
-

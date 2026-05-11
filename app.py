@@ -12,7 +12,6 @@ import subprocess
 import sys
 import warnings
 import logging
-import io
 import shutil
 import tempfile
 import queue
@@ -40,7 +39,7 @@ REQUIRED_PACKAGES = [
     ("moviepy",         "moviepy"),
     ("tkinterdnd2",     "tkinterdnd2"),
     ("openai",          "openai"),
-    ("gTTS",            "gtts"),
+    ("edge-tts",        "edge_tts"),
     ("pydub",           "pydub"),
 ]
 for pkg, imp in REQUIRED_PACKAGES:
@@ -57,7 +56,8 @@ import whisper
 from deep_translator import GoogleTranslator
 from moviepy import VideoFileClip
 from tkinterdnd2 import DND_FILES, TkinterDnD
-from gtts import gTTS
+import edge_tts
+import asyncio
 from pydub import AudioSegment
 
 # ── FFmpeg availability check ────────────────────────────────
@@ -207,7 +207,7 @@ _whisper_model = None
 def transcribe(audio_path):
     global _whisper_model
     if _whisper_model is None:
-        _whisper_model = whisper.load_model("base")
+        _whisper_model = whisper.load_model("small")
     result = _whisper_model.transcribe(audio_path)
     segments = []
     for seg in result["segments"]:
@@ -282,9 +282,45 @@ def remove_file_silent(path):
             pass
 
 
+# ── Edge-TTS voice mapping ───────────────────────────────────
+EDGE_TTS_VOICES = {
+    "en":    "en-US-AriaNeural",
+    "hi":    "hi-IN-SwaraNeural",
+    "mr":    "mr-IN-AarohiNeural",
+    "es":    "es-ES-ElviraNeural",
+    "fr":    "fr-FR-DeniseNeural",
+    "de":    "de-DE-KatjaNeural",
+    "ja":    "ja-JP-NanamiNeural",
+    "zh-CN": "zh-CN-XiaoxiaoNeural",
+    "ar":    "ar-SA-ZariyahNeural",
+    "pt":    "pt-BR-FranciscaNeural",
+}
+
+
+async def _edge_tts_synthesize(text, voice, out_file):
+    """Synthesize a single text segment to an mp3 file using edge-tts."""
+    communicate = edge_tts.Communicate(text, voice)
+    await communicate.save(out_file)
+
+
+def _run_async(coro):
+    """Run an async coroutine safely, handling Windows event-loop policy."""
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 def generate_tts_audio(segments, lang_code, duration, out_path, check_cancel=None):
     total_ms   = int(duration * 1000) + 500
     combined   = AudioSegment.silent(duration=total_ms)
+    text_segments = 0
+    clips_added = 0
+
+    voice = EDGE_TTS_VOICES.get(lang_code, "en-US-AriaNeural")
 
     for i, seg in enumerate(segments):
         if check_cancel and check_cancel():
@@ -293,16 +329,20 @@ def generate_tts_audio(segments, lang_code, duration, out_path, check_cancel=Non
         text = seg["text"].strip()
         if not text:
             continue
+        text_segments += 1
+
+        # Create a temp file for edge-tts output
+        tmp_fd, tmp_mp3 = tempfile.mkstemp(suffix=".mp3", prefix="translytic_tts_seg_")
+        os.close(tmp_fd)
 
         try:
-            tts = gTTS(text=text, lang=lang_code, slow=False)
-            buf = io.BytesIO()
-            tts.write_to_fp(buf)
-            buf.seek(0)
-            clip = AudioSegment.from_file(buf, format="mp3")
+            _run_async(_edge_tts_synthesize(text, voice, tmp_mp3))
+            clip = AudioSegment.from_file(tmp_mp3, format="mp3")
         except Exception as e:
             print(f"TTS failed for segment {i}: {e}")
             continue
+        finally:
+            remove_file_silent(tmp_mp3)
 
         start_ms = int(seg["start"] * 1000)
         seg_duration_ms = int((seg["end"] - seg["start"]) * 1000)
@@ -311,6 +351,12 @@ def generate_tts_audio(segments, lang_code, duration, out_path, check_cancel=Non
 
         if start_ms + len(clip) <= total_ms:
             combined = combined.overlay(clip, position=start_ms)
+            clips_added += 1
+
+    if text_segments == 0:
+        raise RuntimeError("No translated speech segments were available for dubbed audio.")
+    if clips_added == 0:
+        raise RuntimeError("No dubbed audio segments could be generated.")
 
     combined.export(out_path, format="wav")
     return out_path
@@ -1315,7 +1361,7 @@ class CaptionApp:
         remove_file_silent(self._tts_audio_path)
         # Clean up tempfile-generated files in system temp dir
         tmp_dir = tempfile.gettempdir()
-        for pattern in ["translytic_audio_*.wav", "translytic_tts_*.wav"]:
+        for pattern in ["translytic_audio_*.wav", "translytic_tts_*.wav", "translytic_tts_seg_*.mp3"]:
             for f in glob.glob(os.path.join(tmp_dir, pattern)):
                 remove_file_silent(f)
         self.root.destroy()
@@ -1326,7 +1372,7 @@ class CaptionApp:
 if __name__ == "__main__":
     # Clean up leftover temp files from previous runs
     tmp_dir = tempfile.gettempdir()
-    for pattern in ["translytic_audio_*.wav", "translytic_tts_*.wav"]:
+    for pattern in ["translytic_audio_*.wav", "translytic_tts_*.wav", "translytic_tts_seg_*.mp3"]:
         for f in glob.glob(os.path.join(tmp_dir, pattern)):
             remove_file_silent(f)
 
