@@ -61,11 +61,14 @@ import asyncio
 from pydub import AudioSegment
 
 # ── FFmpeg availability check ────────────────────────────────
-if not shutil.which("ffmpeg"):
+def ensure_ffmpeg_available():
+    if shutil.which("ffmpeg") and shutil.which("ffprobe"):
+        return
     import tkinter as _tk
-    _root = _tk.Tk(); _root.withdraw()
+    _root = _tk.Tk()
+    _root.withdraw()
     messagebox.showerror("FFmpeg Required",
-        "FFmpeg is not installed or not found in PATH.\n\n"
+        "FFmpeg or FFprobe is not installed or not found in PATH.\n\n"
         "pydub and moviepy both require FFmpeg to work.\n"
         "Download it from: https://ffmpeg.org/download.html\n"
         "and make sure it is added to your system PATH.")
@@ -203,11 +206,14 @@ def extract_audio(video_path, out="audio_temp.wav"):
     return out
 
 _whisper_model = None
+_whisper_device = None
 
 def transcribe(audio_path):
-    global _whisper_model
+    global _whisper_model, _whisper_device
     if _whisper_model is None:
-        _whisper_model = whisper.load_model("small")
+        import torch
+        _whisper_device = "cuda" if torch.cuda.is_available() else "cpu"
+        _whisper_model = whisper.load_model("small", device=_whisper_device)
     result = _whisper_model.transcribe(audio_path)
     segments = []
     for seg in result["segments"]:
@@ -331,6 +337,9 @@ def generate_tts_audio(segments, lang_code, duration, out_path, check_cancel=Non
             continue
         text_segments += 1
 
+        if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+            raise RuntimeError("FFmpeg and FFprobe must be installed and available in PATH for dubbed audio.")
+
         # Create a temp file for edge-tts output
         tmp_fd, tmp_mp3 = tempfile.mkstemp(suffix=".mp3", prefix="translytic_tts_seg_")
         os.close(tmp_fd)
@@ -349,9 +358,14 @@ def generate_tts_audio(segments, lang_code, duration, out_path, check_cancel=Non
         if len(clip) > seg_duration_ms + 200:
             clip = clip[:seg_duration_ms + 200]
 
-        if start_ms + len(clip) <= total_ms:
-            combined = combined.overlay(clip, position=start_ms)
-            clips_added += 1
+        remaining_ms = total_ms - start_ms
+        if remaining_ms <= 0:
+            continue
+        if len(clip) > remaining_ms:
+            clip = clip[:remaining_ms]
+
+        combined = combined.overlay(clip, position=start_ms)
+        clips_added += 1
 
     if text_segments == 0:
         raise RuntimeError("No translated speech segments were available for dubbed audio.")
@@ -994,6 +1008,8 @@ class CaptionApp:
             self._set_prog("Step 2 / 4")
             self._log("Step 2/4 — Running Whisper…")
             raw = transcribe(audio)
+            device_label = "GPU (CUDA)" if _whisper_device == "cuda" else "CPU"
+            self._log(f"   Whisper device: {device_label}")
 
             # ── Caption Validation: confidence analysis ──
             if raw:
@@ -1019,6 +1035,15 @@ class CaptionApp:
             self._audio_path = audio
             self.segments = translated_segments
             n = len(translated_segments)
+
+            if n == 0:
+                self._set_status("Ready — no captions found", WARN)
+                self._log("No speech captions were detected. Playback was not started.")
+                self.root.after(0, lambda: [
+                    self.seekbar.config(to=self._duration),
+                    self._show_thumbnail(),
+                ])
+                return
 
             if check_cancel(): raise InterruptedError("Cancelled")
             self._set_status("Generating dubbed audio…", ACCENT)
@@ -1370,6 +1395,8 @@ class CaptionApp:
 # ── Entry point ──────────────────────────────────────────────
 
 if __name__ == "__main__":
+    ensure_ffmpeg_available()
+
     # Clean up leftover temp files from previous runs
     tmp_dir = tempfile.gettempdir()
     for pattern in ["translytic_audio_*.wav", "translytic_tts_*.wav", "translytic_tts_seg_*.mp3"]:
