@@ -33,8 +33,8 @@ The file picker and drag-and-drop loader accept:
 
 ## Requirements
 
-- Python 3.10
-- FFmpeg installed and available in PATH
+- Python 3.11.9
+- FFmpeg and FFprobe installed and available in PATH
 - Internet connection for Google Translate and edge-tts
 - Enough disk space for temporary extracted audio files
 
@@ -62,10 +62,24 @@ Install dependencies:
 pip install pygame opencv-python Pillow openai-whisper deep-translator moviepy tkinterdnd2 openai edge-tts pydub
 ```
 
-Install FFmpeg and make sure `ffmpeg` works from the terminal:
+If you have an NVIDIA GPU and want Whisper to use GPU acceleration, install the CUDA-enabled PyTorch build inside the activated virtual environment:
+
+```powershell
+pip uninstall torch torchvision torchaudio -y
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+```
+
+Check whether PyTorch can see your GPU:
+
+```powershell
+python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+```
+
+Install FFmpeg and make sure both `ffmpeg` and `ffprobe` work from the terminal:
 
 ```powershell
 ffmpeg -version
+ffprobe -version
 ```
 
 ## Usage
@@ -119,7 +133,7 @@ If OpenAI translation fails, the app falls back to Google Translate automaticall
 ## Notes
 
 - The app auto-installs missing Python packages when it starts, but installing them manually is recommended.
-- FFmpeg is required. The app exits with an error message if FFmpeg is not found.
+- FFmpeg and FFprobe are required. The app exits with an error message if either tool is not found.
 - Videos without audio cannot be processed.
 - Temporary files are created in the system temp folder and cleaned up when the app closes.
 - Do not commit `venv/`, generated audio, cache files, or large videos to GitHub.
