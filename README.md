@@ -7,7 +7,7 @@ Translytic is a Python desktop application that transcribes video speech, transl
 - Video loading through a file picker or drag and drop
 - Speech transcription using OpenAI Whisper
 - Automatic CPU/CUDA selection when PyTorch supports it
-- Translation to English, Hindi, Marathi, Spanish, French, German, Japanese, Simplified Chinese, Arabic, and Portuguese
+- Translation and dubbing to Hindi, Marathi, and German
 - Google Translate fallback through `deep-translator`
 - Optional OpenRouter translation configured through environment variables or a local `.env` file
 - Synced caption playback, seeking, and original/dubbed audio switching
@@ -16,7 +16,7 @@ Translytic is a Python desktop application that transcribes video speech, transl
 
 ## Requirements
 
-- Python 3.11.x recommended for this dependency set
+- Python 3.10.5 is supported by the current tested environment; Python 3.11.x is also recommended for a new installation
 - FFmpeg and FFprobe installed and available on `PATH`
 - Internet access for online translation and Edge TTS
 - Enough temporary disk space for extracted audio and dubbed output
@@ -72,11 +72,19 @@ python app.py
 ```
 
 1. Select or drop a video with an audio track.
-2. Select the target language.
-3. Click **Process & Play**.
+2. Select Hindi, Marathi, or German as the target language.
+3. Click **Process video**.
 4. Wait while audio is extracted, transcribed, translated, and dubbed.
 5. Review the captions and playback.
 6. Use **Export .srt** to save translated captions.
+
+During dubbing, Translytic fetches Edge TTS's current voice catalog and validates
+the selected voice against the target locale. It then generates MP3 segments,
+validates them with FFprobe, normalizes them to a 44.1 kHz stereo WAV timeline,
+and only enables the Original/Dubbed switch after the final WAV is validated.
+If a segment fails, later segments continue; segments marked as translation
+failures are skipped. When valid dubbed audio is generated, playback starts in
+Dubbed mode and the button switches between Dubbed and Original audio.
 
 Supported extensions in the UI include MP4, MOV, AVI, MKV, and WebM. Actual codec support depends on the FFmpeg/OpenCV installation.
 
@@ -92,7 +100,19 @@ python -m unittest discover -s tests -v
 
 - Translation and voice synthesis require network access.
 - Machine translation may need manual review for idioms, names, and technical vocabulary.
-- Dubbed speech length can differ from the original dialogue timing.
+- Dubbed speech length can differ from the original dialogue timing. A segment is
+  placed between its timestamp and the next translated segment; the implementation
+  attempts up to 1.5x time compression and only truncates the tail as a last
+  resort, with a warning in the processing log.
+- Edge TTS voice discovery and synthesis require outbound network access. A
+  temporary provider/network failure disables dubbed audio for that run without
+  disabling subtitles.
+- Google Translate fallback requests are paced, cached within a processing run,
+  and retried when rate-limited. If Google continues returning HTTP 429, wait and
+  retry later. When Whisper identifies the source language, the app also tries
+  the free MyMemory backend before retaining source text. You can alternatively
+  configure the optional OpenRouter provider in `.env`; without a successful
+  translation provider, translated subtitles and dubbing cannot be generated safely.
 - A full visual subtitle editor, speaker diarization, resumable processing, and additional subtitle formats are not yet implemented.
 - Python dependency versions are not pinned; for a reproducible release, test and lock versions on the target Windows/Python environment.
 

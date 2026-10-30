@@ -9,3 +9,4 @@ openai
 edge-tts
 pydub
 python-dotenv
+torch

@@ -173,6 +173,7 @@ VIDEO_H     = 900
 LANGUAGES = {
     "Hindi":                "hi",
     "Marathi":              "mr",
+    "German":               "de",
 }
 
 TRANSLATION_LANGUAGE_NAMES = {
